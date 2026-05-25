@@ -99,6 +99,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["darwin"]
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["darwin*"]
+exclude = ["tests*", "docs*"]
+
 [tool.hatch.build.targets.sdist]
 exclude = [
     "/.venv*",
