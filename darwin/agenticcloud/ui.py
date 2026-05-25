@@ -328,10 +328,19 @@ def _fmt_cost(usd: float) -> str:
 
 
 def _short_id(att_id: str) -> str:
-    """Make attestation IDs readable: full UUID → att_<first 12 chars>."""
-    # Strip a leading "att_" prefix if present, then take first 12 hex chars.
-    raw = att_id.removeprefix("att_").replace("-", "")
-    return f"att_{raw[:12]}"
+    """Make attestation IDs readable.
+
+    UUID-shaped IDs are truncated to 12 hex chars.
+    Demo/manual IDs (att_demo_...) are passed through as-is so the
+    substrate name stays legible.
+    """
+    raw = att_id.removeprefix("att_")
+    # UUID = 32 hex chars (with or without hyphens). If it looks like one,
+    # shorten. Otherwise leave it alone.
+    hex_only = raw.replace("-", "")
+    if len(hex_only) >= 32 and all(c in "0123456789abcdef" for c in hex_only.lower()):
+        return f"att_{hex_only[:12]}"
+    return att_id
 
 
 def _fmt_timestamp(unix_ts: float) -> str:
@@ -432,3 +441,188 @@ def render_mcp_install_receipt(
     parts.append(final)
 
     return Group(*parts)
+
+
+# -------------------------------------------------------------------
+# v0.2 attestation panel — polymorphic substrate block
+# -------------------------------------------------------------------
+
+
+def render_v02_attestation_panel(attestation: dict) -> Panel:
+    """Branded panel for v0.2 attestations.
+
+    Adds a fourth `substrate` block to the v0.1 layout, rendering the
+    polymorphic substrate object: id, version, identity-signer key id
+    and type, evidence schema id, TEE marker, and evidence fields.
+
+    Visual style preserved from v0.1 — three columns, hash truncation,
+    brand colors, the verification line at the bottom.
+    """
+    exec_result = attestation.get("execution_result", {})
+    substrate = exec_result.get("substrate", {})
+    evidence = substrate.get("evidence", {})
+
+    body = Text()
+
+    # --- Identity block ---
+    body.append("id           ", style=BRAND_DIM)
+    body.append(_short_id(attestation.get("attestation_id", "")), style="white")
+    body.append("\n")
+    body.append("issued       ", style=BRAND_DIM)
+    body.append(attestation.get("issued_at", ""), style="white")
+    body.append("\n")
+    body.append("\n")
+
+    # --- Execution block ---
+    body.append("workload     ", style=BRAND_DIM)
+    body.append(_short_hash(attestation.get("workload_spec_hash", "")), style="white")
+    body.append("\n")
+    body.append("output       ", style=BRAND_DIM)
+    body.append(_short_hash(exec_result.get("output_hash", "")), style="white")
+    body.append("\n")
+    body.append("cost         ", style=BRAND_DIM)
+    body.append(f"${_fmt_cost(exec_result.get('cost_usd', 0.0))}", style="white")
+    body.append("\n")
+    body.append("\n")
+
+    # --- Substrate block (NEW for v0.2) ---
+    body.append("substrate    ", style=BRAND_DIM)
+    body.append(substrate.get("id", "?"), style=BRAND_AMBER)
+    body.append("  ", style=BRAND_DIM)
+    body.append(f"v{substrate.get('version', '?')}", style=BRAND_DIM)
+    body.append("\n")
+    body.append("schema       ", style=BRAND_DIM)
+    body.append(substrate.get("evidence_schema_id", "?"), style=BRAND_AMBER)
+    body.append("\n")
+
+    # Substrate identity signer
+    sig_type = substrate.get("identity_signer_type", "?")
+    if sig_type == "darwin-class-key":
+        sig_style = f"bold {BRAND_GREEN}"
+    elif sig_type == "operator-fallback":
+        sig_style = BRAND_AMBER
+    else:
+        sig_style = BRAND_DIM
+    body.append("sub-signer   ", style=BRAND_DIM)
+    body.append(substrate.get("identity_signer_key_id", "?"), style=BRAND_GREEN)
+    body.append("  ", style=BRAND_DIM)
+    body.append(f"[{sig_type}]", style=sig_style)
+    body.append("\n")
+
+    # TEE marker (only displayed when meaningful — true or extensions present)
+    tee = substrate.get("tee_required", False)
+    extensions = substrate.get("extensions", {}) or {}
+    if tee:
+        body.append("tee          ", style=BRAND_DIM)
+        body.append("required", style=f"bold {BRAND_AMBER}")
+        body.append("\n")
+    if extensions:
+        body.append("extensions   ", style=BRAND_DIM)
+        body.append(", ".join(sorted(extensions.keys())), style=BRAND_DIM)
+        body.append("\n")
+    body.append("\n")
+
+    # --- Evidence rows ---
+    body.append("evidence", style=BRAND_DIM)
+    body.append("\n")
+    for key in sorted(evidence.keys()):
+        val = evidence[key]
+        body.append(f"  {key:<22}", style=BRAND_DIM)
+        body.append(_fmt_evidence_value(key, val), style="white")
+        body.append("\n")
+    body.append("\n")
+
+    # --- Cryptography / outer signature ---
+    body.append("signer       ", style=BRAND_DIM)
+    body.append(attestation.get("signer_key_id", "?"), style=BRAND_GREEN)
+    body.append("\n")
+    body.append("\n")
+
+    # --- Verification line ---
+    body.append("✓ ", style=f"bold {BRAND_GREEN}")
+    body.append("attestation signed", style="white")
+    body.append("\n")
+    body.append("schema       ", style=BRAND_DIM)
+    body.append(
+        attestation.get("schema", "darwin.cloud/agenticcloud/attestation/v0.2"),
+        style=BRAND_AMBER,
+    )
+
+    # Subtitle shows SCHEMA version (v0.2.0), not substrate adapter version.
+    version_str = "0.2.0"
+    subtitle = (
+        f"[dim]darwin.cloud — verifiable compute for AI agents[/dim]"
+        f"   [{BRAND_AMBER}]v{version_str}[/{BRAND_AMBER}]"
+    )
+
+    return Panel(
+        body,
+        title="[bold]attestation · darwin.agenticcloud[/bold]",
+        subtitle=subtitle,
+        border_style=BRAND_GREEN,
+        padding=(1, 2),
+    )
+
+
+def _fmt_evidence_value(key: str, val) -> str:
+    """Render an evidence value compactly.
+
+    Hashes are truncated. Numbers are formatted. Strings are passed through
+    with reasonable upper-bound length.
+    """
+    if val is None:
+        return "—"
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, str):
+        # Hashes (hex of length 64, with or without sha256: prefix)
+        if key.endswith("_hash") or (
+            len(val) == 64 and all(c in "0123456789abcdef" for c in val.lower())
+        ):
+            return _short_hash(val)
+        if len(val) > 48:
+            return f"{val[:36]}…"
+        return val
+    if isinstance(val, int | float):
+        if key.endswith("_sec"):
+            return f"{val:.3f}s"
+        if key.endswith("_ms"):
+            return f"{val}ms"
+        if key.endswith("_mb"):
+            return f"{val} MB"
+        return str(val)
+    return str(val)
+
+
+# -------------------------------------------------------------------
+# Dispatcher: pick v0.1 vs v0.2 by schema
+# -------------------------------------------------------------------
+
+
+def render_attestation_panel_auto(attestation: dict) -> Panel:
+    """Render whichever attestation panel matches the schema.
+
+    Callers (CLI, MCP, server) use this so they don't have to track
+    the schema version themselves. Returns the v0.2 panel for new
+    attestations and a v0.1 panel reconstructed from the old shape
+    for backward compatibility.
+    """
+    schema = attestation.get("schema", "")
+    if "v0.2" in schema:
+        return render_v02_attestation_panel(attestation)
+
+    # Fall back to v0.1 panel construction. The old panel takes
+    # positional args; we marshal them here.
+    exec_result = attestation.get("execution_result", {})
+    return render_attestation_panel(
+        workload_hash=attestation.get("workload_spec_hash", ""),
+        output_hash=exec_result.get("output_hash", ""),
+        substrate=exec_result.get("substrate_id", "?"),
+        signer_key_id=attestation.get("signer_key_id", "?"),
+        cost_usd=exec_result.get("cost_usd", 0.0),
+        cost_cap_usd=attestation.get("workload_spec", {}).get("cost_cap_usd", 0.0),
+        verified=True,
+        attestation_id=attestation.get("attestation_id"),
+        issued_at=attestation.get("issued_at"),
+        schema_full=schema,
+    )
