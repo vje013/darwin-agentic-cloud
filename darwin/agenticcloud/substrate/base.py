@@ -36,17 +36,15 @@ from __future__ import annotations
 import abc
 import base64
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Protocol
 
 # --- Imports from the rest of the Darwin codebase ---------------------------
 # These imports name the Phase 1 modules. If a name has drifted, adjust the
 # import only — the contract defined below does not depend on the internals.
-
 from darwin.agenticcloud import hashing as _hashing  # sha256 hex helpers
-from darwin.agenticcloud import signing as _signing  # Ed25519 sign / verify
 from darwin.agenticcloud.types import WorkloadSpec  # workload spec dataclass
-
 
 # ============================================================================
 # Constants
@@ -69,6 +67,7 @@ IDENTITY_DOMAIN_SEPARATOR: str = "darwin.cloud/substrate-identity/v1"
 # ============================================================================
 # Errors
 # ============================================================================
+
 
 class SubstrateError(Exception):
     """Base class for all substrate-layer errors."""
@@ -120,6 +119,7 @@ class EvidenceSchema:
     `required_fields` is the minimum set of keys the evidence dict MUST
     contain. The validator may enforce stronger constraints.
     """
+
     schema_id: str
     required_fields: frozenset[str]
     validator: EvidenceValidator
@@ -163,8 +163,7 @@ class EvidenceRegistry:
         missing = schema.required_fields - evidence.keys()
         if missing:
             raise EvidenceSchemaError(
-                f"Evidence for {schema_id} missing required fields: "
-                f"{sorted(missing)}"
+                f"Evidence for {schema_id} missing required fields: {sorted(missing)}"
             )
         schema.validator(evidence)
 
@@ -184,6 +183,7 @@ def _noop_validator(_: Mapping[str, Any]) -> None:
 # ============================================================================
 # Substrate identity
 # ============================================================================
+
 
 @dataclass(frozen=True)
 class SubstrateIdentity:
@@ -210,11 +210,12 @@ class SubstrateIdentity:
     Domain separation prevents a substrate-identity signature from being
     replayable as any other Darwin signature artifact.
     """
+
     substrate_id: str
     substrate_version: str
-    signer_type: str          # "darwin-class-key" | "operator-fallback"
+    signer_type: str  # "darwin-class-key" | "operator-fallback"
     signer_key_id: str
-    identity_signature: str   # base64(Ed25519 sig over JCS payload)
+    identity_signature: str  # base64(Ed25519 sig over JCS payload)
 
 
 class SubstrateIdentitySigner(Protocol):
@@ -247,6 +248,7 @@ class SubstrateIdentitySigner(Protocol):
 # Workload, costs, and results
 # ============================================================================
 
+
 @dataclass(frozen=True)
 class CostEstimate:
     """Pre-flight cost estimate returned by `Substrate.preflight()`.
@@ -255,6 +257,7 @@ class CostEstimate:
     The runtime compares this against the workload's cost cap and refuses to
     run if `cost_usd_max > workload.cost_cap_usd`.
     """
+
     cost_usd_max: float
     cost_breakdown: dict[str, float] = field(default_factory=dict)
     notes: str = ""
@@ -276,6 +279,7 @@ class RunResult:
     attestation flips this to `True` and writes the quote into
     `extensions["tee.tdx.v1"]` (or equivalent). Phase 7.
     """
+
     substrate_id: str
     substrate_version: str
     workload_spec_hash: str
@@ -293,6 +297,7 @@ class RunResult:
 # ============================================================================
 # Substrate ABC
 # ============================================================================
+
 
 class Substrate(abc.ABC):
     """Abstract compute backend.
@@ -368,6 +373,7 @@ class Substrate(abc.ABC):
 # Identity payload + signing helpers
 # ============================================================================
 
+
 def build_identity_payload(
     *,
     substrate_id: str,
@@ -403,9 +409,7 @@ def sign_identity(
     both signatures).
     """
     if not result.issued_at:
-        raise SubstrateError(
-            "RunResult.issued_at must be set before signing identity"
-        )
+        raise SubstrateError("RunResult.issued_at must be set before signing identity")
 
     payload = build_identity_payload(
         substrate_id=result.substrate_id,
@@ -434,6 +438,7 @@ def sign_identity(
 # ============================================================================
 # Attestation construction
 # ============================================================================
+
 
 def build_attestation_dict(
     *,
@@ -492,29 +497,29 @@ def iso8601_now() -> str:
 __all__ = [
     # Constants
     "ATTESTATION_SCHEMA_URI",
-    "SUBSTRATE_KEYLIST_URL",
-    "IDENTITY_DOMAIN_SEPARATOR",
-    # Errors
-    "SubstrateError",
-    "PreflightRejected",
-    "SubstrateExecutionError",
-    "EvidenceSchemaError",
-    # Evidence registry
-    "EvidenceSchema",
-    "EvidenceRegistry",
-    "EvidenceValidator",
     "EVIDENCE_REGISTRY",
-    # Identity
-    "SubstrateIdentity",
-    "SubstrateIdentitySigner",
-    "build_identity_payload",
-    "sign_identity",
+    "IDENTITY_DOMAIN_SEPARATOR",
+    "SUBSTRATE_KEYLIST_URL",
     # Workload + result
     "CostEstimate",
+    "EvidenceRegistry",
+    # Evidence registry
+    "EvidenceSchema",
+    "EvidenceSchemaError",
+    "EvidenceValidator",
+    "PreflightRejected",
     "RunResult",
     # ABC
     "Substrate",
+    # Errors
+    "SubstrateError",
+    "SubstrateExecutionError",
+    # Identity
+    "SubstrateIdentity",
+    "SubstrateIdentitySigner",
     # Attestation
     "build_attestation_dict",
+    "build_identity_payload",
     "iso8601_now",
+    "sign_identity",
 ]

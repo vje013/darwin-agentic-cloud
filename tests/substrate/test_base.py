@@ -25,9 +25,8 @@ from __future__ import annotations
 
 import base64
 import json
-from dataclasses import replace
-from typing import Any, Mapping
-from unittest.mock import MagicMock
+from collections.abc import Mapping
+from typing import Any
 
 import pytest
 
@@ -38,7 +37,6 @@ from darwin.agenticcloud.substrate.base import (
     EvidenceRegistry,
     EvidenceSchema,
     EvidenceSchemaError,
-    PreflightRejected,
     RunResult,
     Substrate,
     SubstrateError,
@@ -51,17 +49,20 @@ from darwin.agenticcloud.substrate.base import (
     sign_identity,
 )
 
-
 # ============================================================================
 # Helpers — fake signer, fake substrate, fake workload
 # ============================================================================
+
 
 class _FakeSigner:
     """Implements `SubstrateIdentitySigner` Protocol. Records the last
     payload signed so tests can verify the bytes-to-sign were JCS-canonical."""
 
-    def __init__(self, signer_type: str = "darwin-class-key",
-                 signer_key_id: str = "dac-class-local-docker-v0-abc123"):
+    def __init__(
+        self,
+        signer_type: str = "darwin-class-key",
+        signer_key_id: str = "dac-class-local-docker-v0-abc123",
+    ):
         self._type = signer_type
         self._id = signer_key_id
         self.last_payload: bytes | None = None
@@ -83,20 +84,20 @@ class _FakeSigner:
 
 def _make_result(**overrides: Any) -> RunResult:
     """Build a RunResult with sensible defaults; override specific fields."""
-    defaults: dict[str, Any] = dict(
-        substrate_id="fake-substrate-v0",
-        substrate_version="0.0.1",
-        workload_spec_hash="sha256:" + "a" * 64,
-        stdout="Hello, agent.\n",
-        stderr="",
-        output_hash="sha256:" + "b" * 64,
-        cost_usd=0.000142,
-        evidence_schema_id="darwin.cloud/evidence/fake-substrate/v1",
-        evidence={"fake_request_id": "req_001", "fake_log_ref": "logref_001"},
-        extensions={},
-        tee_required=False,
-        issued_at="2026-06-15T12:00:00Z",
-    )
+    defaults: dict[str, Any] = {
+        "substrate_id": "fake-substrate-v0",
+        "substrate_version": "0.0.1",
+        "workload_spec_hash": "sha256:" + "a" * 64,
+        "stdout": "Hello, agent.\n",
+        "stderr": "",
+        "output_hash": "sha256:" + "b" * 64,
+        "cost_usd": 0.000142,
+        "evidence_schema_id": "darwin.cloud/evidence/fake-substrate/v1",
+        "evidence": {"fake_request_id": "req_001", "fake_log_ref": "logref_001"},
+        "extensions": {},
+        "tee_required": False,
+        "issued_at": "2026-06-15T12:00:00Z",
+    }
     defaults.update(overrides)
     return RunResult(**defaults)
 
@@ -116,8 +117,8 @@ def _register_fake_evidence_schema(registry: EvidenceRegistry) -> EvidenceSchema
 # EvidenceRegistry
 # ============================================================================
 
-class TestEvidenceRegistry:
 
+class TestEvidenceRegistry:
     def test_register_and_get(self):
         reg = EvidenceRegistry()
         schema = EvidenceSchema(
@@ -140,17 +141,21 @@ class TestEvidenceRegistry:
 
     def test_register_duplicate_id_different_instance_raises(self):
         reg = EvidenceRegistry()
-        reg.register(EvidenceSchema(
-            schema_id="darwin.cloud/evidence/test/v1",
-            required_fields=frozenset({"foo"}),
-            validator=lambda _: None,
-        ))
-        with pytest.raises(EvidenceSchemaError, match="already registered"):
-            reg.register(EvidenceSchema(
+        reg.register(
+            EvidenceSchema(
                 schema_id="darwin.cloud/evidence/test/v1",
-                required_fields=frozenset({"bar"}),  # different required set
+                required_fields=frozenset({"foo"}),
                 validator=lambda _: None,
-            ))
+            )
+        )
+        with pytest.raises(EvidenceSchemaError, match="already registered"):
+            reg.register(
+                EvidenceSchema(
+                    schema_id="darwin.cloud/evidence/test/v1",
+                    required_fields=frozenset({"bar"}),  # different required set
+                    validator=lambda _: None,
+                )
+            )
 
     def test_get_unknown_raises(self):
         reg = EvidenceRegistry()
@@ -159,11 +164,13 @@ class TestEvidenceRegistry:
 
     def test_validate_missing_required_field_raises(self):
         reg = EvidenceRegistry()
-        reg.register(EvidenceSchema(
-            schema_id="darwin.cloud/evidence/test/v1",
-            required_fields=frozenset({"foo", "bar"}),
-            validator=lambda _: None,
-        ))
+        reg.register(
+            EvidenceSchema(
+                schema_id="darwin.cloud/evidence/test/v1",
+                required_fields=frozenset({"foo", "bar"}),
+                validator=lambda _: None,
+            )
+        )
         with pytest.raises(EvidenceSchemaError, match=r"missing required fields.*'bar'"):
             reg.validate("darwin.cloud/evidence/test/v1", {"foo": 1})
 
@@ -176,11 +183,13 @@ class TestEvidenceRegistry:
                 raise EvidenceSchemaError("foo must be non-negative")
 
         reg = EvidenceRegistry()
-        reg.register(EvidenceSchema(
-            schema_id="darwin.cloud/evidence/test/v1",
-            required_fields=frozenset({"foo"}),
-            validator=custom,
-        ))
+        reg.register(
+            EvidenceSchema(
+                schema_id="darwin.cloud/evidence/test/v1",
+                required_fields=frozenset({"foo"}),
+                validator=custom,
+            )
+        )
         reg.validate("darwin.cloud/evidence/test/v1", {"foo": 1})
         assert called == [{"foo": 1}]
 
@@ -189,30 +198,36 @@ class TestEvidenceRegistry:
 
     def test_known_ids_returns_frozenset(self):
         reg = EvidenceRegistry()
-        reg.register(EvidenceSchema(
-            schema_id="darwin.cloud/evidence/a/v1",
-            required_fields=frozenset(),
-            validator=lambda _: None,
-        ))
-        reg.register(EvidenceSchema(
-            schema_id="darwin.cloud/evidence/b/v1",
-            required_fields=frozenset(),
-            validator=lambda _: None,
-        ))
+        reg.register(
+            EvidenceSchema(
+                schema_id="darwin.cloud/evidence/a/v1",
+                required_fields=frozenset(),
+                validator=lambda _: None,
+            )
+        )
+        reg.register(
+            EvidenceSchema(
+                schema_id="darwin.cloud/evidence/b/v1",
+                required_fields=frozenset(),
+                validator=lambda _: None,
+            )
+        )
         ids = reg.known_ids()
         assert isinstance(ids, frozenset)
-        assert ids == frozenset({
-            "darwin.cloud/evidence/a/v1",
-            "darwin.cloud/evidence/b/v1",
-        })
+        assert ids == frozenset(
+            {
+                "darwin.cloud/evidence/a/v1",
+                "darwin.cloud/evidence/b/v1",
+            }
+        )
 
 
 # ============================================================================
 # Identity payload + signing
 # ============================================================================
 
-class TestIdentityPayload:
 
+class TestIdentityPayload:
     def test_payload_includes_domain_separator(self):
         payload = build_identity_payload(
             substrate_id="local-docker-v0",
@@ -228,19 +243,25 @@ class TestIdentityPayload:
         """If this test fails, RFC-0003 needs an update — the identity
         payload shape is a public contract."""
         payload = build_identity_payload(
-            substrate_id="x", substrate_version="y",
-            workload_spec_hash="z", output_hash="w",
-            evidence_schema_id="u", issued_at="t",
+            substrate_id="x",
+            substrate_version="y",
+            workload_spec_hash="z",
+            output_hash="w",
+            evidence_schema_id="u",
+            issued_at="t",
         )
         assert set(payload.keys()) == {
-            "domain", "substrate_id", "substrate_version",
-            "workload_spec_hash", "output_hash",
-            "evidence_schema_id", "issued_at",
+            "domain",
+            "substrate_id",
+            "substrate_version",
+            "workload_spec_hash",
+            "output_hash",
+            "evidence_schema_id",
+            "issued_at",
         }
 
 
 class TestSignIdentity:
-
     def test_sign_identity_happy_path(self):
         signer = _FakeSigner()
         result = _make_result()
@@ -285,13 +306,14 @@ class TestSignIdentity:
 # Attestation dict (spec section 3.2 conformance)
 # ============================================================================
 
-class TestBuildAttestationDict:
 
+class TestBuildAttestationDict:
     @pytest.fixture
     def setup(self, monkeypatch):
         """Register the fake evidence schema on the process-global registry
         for the duration of the test, then clean up."""
         from darwin.agenticcloud.substrate.base import EVIDENCE_REGISTRY
+
         added = False
         schema_id = "darwin.cloud/evidence/fake-substrate/v1"
         if schema_id not in EVIDENCE_REGISTRY.known_ids():
@@ -325,8 +347,11 @@ class TestBuildAttestationDict:
             identity=identity,
         )
         assert set(att.keys()) == {
-            "attestation_id", "schema", "issued_at",
-            "workload_spec_hash", "execution_result",
+            "attestation_id",
+            "schema",
+            "issued_at",
+            "workload_spec_hash",
+            "execution_result",
         }
 
     def test_execution_result_shape_matches_spec(self, setup):
@@ -339,7 +364,11 @@ class TestBuildAttestationDict:
         )
         er = att["execution_result"]
         assert set(er.keys()) == {
-            "output_hash", "substrate", "cost_usd", "stdout", "stderr",
+            "output_hash",
+            "substrate",
+            "cost_usd",
+            "stdout",
+            "stderr",
         }
         assert er["output_hash"] == result.output_hash
         assert er["cost_usd"] == result.cost_usd
@@ -430,15 +459,13 @@ class TestBuildAttestationDict:
             identity=identity,
         )
         evidence["fake_request_id"] = "MUTATED"
-        assert (
-            att["execution_result"]["substrate"]["evidence"]["fake_request_id"]
-            == "req_001"
-        )
+        assert att["execution_result"]["substrate"]["evidence"]["fake_request_id"] == "req_001"
 
 
 # ============================================================================
 # Substrate ABC conformance
 # ============================================================================
+
 
 class _ConcreteSubstrate(Substrate):
     """Minimal concrete substrate used to test ABC instantiability."""
@@ -491,7 +518,6 @@ class _IncompleteSubstrate(Substrate):
 
 
 class TestSubstrateABC:
-
     def test_concrete_subclass_instantiable(self):
         s = _ConcreteSubstrate()
         assert s.substrate_id == "concrete-test-v0"
@@ -506,8 +532,8 @@ class TestSubstrateABC:
 # Errors carry partial evidence
 # ============================================================================
 
-class TestSubstrateExecutionError:
 
+class TestSubstrateExecutionError:
     def test_carries_partial_evidence(self):
         err = SubstrateExecutionError(
             "container exited with code 137 (OOM)",
@@ -525,8 +551,8 @@ class TestSubstrateExecutionError:
 # iso8601_now
 # ============================================================================
 
-class TestIso8601Now:
 
+class TestIso8601Now:
     def test_format(self):
         ts = iso8601_now()
         # YYYY-MM-DDTHH:MM:SSZ — exactly 20 characters
@@ -538,6 +564,7 @@ class TestIso8601Now:
 # ============================================================================
 # Conformance helper for downstream test files
 # ============================================================================
+
 
 def assert_substrate_conforms_to_v02(
     substrate: Substrate,
@@ -556,6 +583,7 @@ def assert_substrate_conforms_to_v02(
     # The adapter's evidence schema must be in the global registry by the
     # time the substrate is instantiated.
     from darwin.agenticcloud.substrate.base import EVIDENCE_REGISTRY
+
     assert expected_evidence_schema_id in EVIDENCE_REGISTRY.known_ids(), (
         f"Substrate {expected_substrate_id} declares evidence schema "
         f"{expected_evidence_schema_id} but did not register it. "
