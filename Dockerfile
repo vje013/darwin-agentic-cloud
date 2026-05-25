@@ -57,7 +57,15 @@ WORKDIR /home/darwin
 
 EXPOSE 8787
 
+# Bootstrap entrypoint: materializes class signing keys from env vars
+# into /data/class-keys before the server starts. Owner-only readable.
+USER 0:0
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+USER 10001:0
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/healthz')" || exit 1
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["darwin", "serve", "--host", "0.0.0.0", "--port", "8787"]
