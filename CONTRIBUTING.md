@@ -110,6 +110,82 @@ Do **not** open public issues for security vulnerabilities. See [SECURITY.md](SE
 - Documentation and examples
 - Performance benchmarks
 
+## For Autonomous Agents
+
+This section is for AI coding agents (Copilot, Sweep, Devin, Aider, Codex CLI, etc.) contributing to Darwin Agentic Cloud. Human contributors should follow the standard flow above.
+
+### DCO sign-off
+
+All commits — including those from agents — **must** include DCO sign-off. Use the `-s` flag:
+
+```bash
+git commit -s -m "feat: add foo"
+```
+
+Agents that cannot sign off interactively should include the `Signed-off-by:` trailer in the commit message body:
+
+```text
+feat(sandbox): add gVisor support
+
+Signed-off-by: Agent Name <agent@example.com>
+```
+
+### Branch naming
+
+Agent branches must follow the pattern:
+
+```text
+<agent>/<short-description>
+```
+
+Examples:
+- `copilot/fix-attestation-hash`
+- `sweep/add-bun-runtime`
+- `devin/otel-logging`
+- `aider/benchmark-harness`
+
+### PR template
+
+Agent-opened PRs must include:
+
+1. **Title:** Conventional Commit style (e.g., `feat(sandbox): add Bun runtime`)
+2. **Body:**
+   - What problem this solves (reference the issue number)
+   - What changed (brief summary)
+   - How to test (commands to run)
+3. **Labels:** Add relevant labels (`agent-contributed`, plus area labels)
+4. **Linked issue:** Reference the triggering issue with `Closes #N` or `Fixes #N`
+
+### CI requirements
+
+All PRs must pass before merge:
+
+- `make lint` — Ruff linting (zero warnings)
+- `make typecheck` — mypy strict mode
+- `make test-unit` — Unit tests (no Docker required)
+- `make test-integration` — Integration tests (Docker required, runs in CI)
+
+If CI fails, agents should attempt to fix up to 3 times. After 3 failures, add the `needs-human` label.
+
+### Mention syntax reference
+
+| Agent | How to invoke |
+|-------|---------------|
+| Copilot Coding Agent | `@copilot` in issue/PR comments |
+| Sweep | Issue title prefix `sweep:` or `/sweep` comment |
+| Devin | `@devin-ai-integration` in comments |
+| PR-Agent | `/review`, `/improve`, `/describe` in PR comments |
+
+For full details on each agent's capabilities, see [`docs/AGENT_INVENTORY.md`](docs/AGENT_INVENTORY.md).
+
+### Good-first-issue guidelines for agents
+
+Issues labeled `good first issue` + `agent-friendly` are designed for autonomous agents:
+- Self-contained with clear acceptance criteria
+- Include pointers to relevant source files
+- Specify expected test coverage
+- Reference any relevant RFCs or design docs
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
