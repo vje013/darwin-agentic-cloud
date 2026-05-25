@@ -30,56 +30,76 @@ jobs:
   nudge:
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve outreach issue number
+      - name: Resolve issue numbers
         id: cfg
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ISSUE="${{ vars.AGENT_OUTREACH_ISSUE }}"
-          if [ -z "$ISSUE" ]; then
-            echo "::warning::AGENT_OUTREACH_ISSUE variable not set; skipping"
+          OUTREACH="${{ vars.AGENT_OUTREACH_ISSUE }}"
+          A2A="${{ vars.AGENT_A2A_ISSUE }}"
+          if [ -z "$OUTREACH" ] && [ -z "$A2A" ]; then
+            echo "::warning::No agent issues configured; skipping"
             echo "skip=true" >> $GITHUB_OUTPUT
             exit 0
           fi
-          echo "issue=$ISSUE" >> $GITHUB_OUTPUT
+          # Build a space-separated list of "issue|label" pairs
+          PAIRS=""
+          if [ -n "$OUTREACH" ]; then PAIRS="$OUTREACH:outreach"; fi
+          if [ -n "$A2A" ]; then
+            if [ -n "$PAIRS" ]; then PAIRS="$PAIRS $A2A:a2a"; else PAIRS="$A2A:a2a"; fi
+          fi
+          echo "pairs=$PAIRS" >> $GITHUB_OUTPUT
 
-      - name: Check issue state and last activity
-        id: state
+      - name: Nudge agents on stale issues
         if: steps.cfg.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ steps.cfg.outputs.issue }}
+          PAIRS: ${{ steps.cfg.outputs.pairs }}
+          REPO: ${{ github.repository }}
         run: |
-          STATE=$(gh issue view "$ISSUE" --repo ${{ github.repository }} --json state -q .state)
-          echo "state=$STATE" >> $GITHUB_OUTPUT
-          if [ "$STATE" != "OPEN" ]; then
-            echo "Issue not open; nothing to nudge."
-            exit 0
-          fi
-          # Get the timestamp of the most recent comment by anyone
-          LAST=$(gh issue view "$ISSUE" --repo ${{ github.repository }} \
-            --json comments -q '.comments | sort_by(.createdAt) | last | .createdAt')
-          if [ -z "$LAST" ] || [ "$LAST" = "null" ]; then
-            # No comments yet, definitely need to wake the agent
-            echo "needs_nudge=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          NOW=$(date -u +%s)
-          LAST_TS=$(date -u -d "$LAST" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST" +%s)
-          DELTA=$(( NOW - LAST_TS ))
-          # 5.5 hours = 19800 seconds (slightly less than 6h to handle clock drift)
-          if [ "$DELTA" -gt 19800 ]; then
-            echo "needs_nudge=true" >> $GITHUB_OUTPUT
-          else
-            echo "Last activity $DELTA seconds ago; no nudge needed."
-            echo "needs_nudge=false" >> $GITHUB_OUTPUT
-          fi
+          for PAIR in $PAIRS; do
+            ISSUE="${PAIR%:*}"
+            LABEL="${PAIR#*:}"
+            echo "::group::Checking issue #$ISSUE ($LABEL)"
 
-      - name: Nudge Copilot
-        if: steps.state.outputs.needs_nudge == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE: ${{ steps.cfg.outputs.issue }}
-        run: |
-          gh issue comment "$ISSUE" --repo ${{ github.repository }} --body \
-            "@copilot continue working on the outreach loop. Pick the next unchecked task above and proceed per the try/fail/retry rules. Cycle: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            STATE=$(gh issue view "$ISSUE" --repo "$REPO" --json state -q .state)
+            if [ "$STATE" != "OPEN" ]; then
+              echo "Issue #$ISSUE not open; skipping."
+              echo "::endgroup::"
+              continue
+            fi
+
+            LAST=$(gh issue view "$ISSUE" --repo "$REPO" \
+              --json comments -q '.comments | sort_by(.createdAt) | last | .createdAt')
+            if [ -z "$LAST" ] || [ "$LAST" = "null" ]; then
+              echo "No comments yet on #$ISSUE; nudging."
+              NEEDS_NUDGE="true"
+            else
+              NOW=$(date -u +%s)
+              LAST_TS=$(date -u -d "$LAST" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST" +%s)
+              DELTA=$(( NOW - LAST_TS ))
+              if [ "$DELTA" -gt 19800 ]; then
+                echo "Issue #$ISSUE last activity $DELTA seconds ago; nudging."
+                NEEDS_NUDGE="true"
+              else
+                echo "Issue #$ISSUE last activity $DELTA seconds ago; no nudge needed."
+                NEEDS_NUDGE="false"
+              fi
+            fi
+
+            if [ "$NEEDS_NUDGE" = "true" ]; then
+              case "$LABEL" in
+                outreach)
+                  MSG="@copilot continue working on the outreach loop. Pick the next unchecked task above and proceed per the try/fail/retry rules. Cycle: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+                  ;;
+                a2a)
+                  MSG="@copilot continue working on the A2A discoverability task. Pick the next unchecked item from the current phase, complete the phase before starting the next, and proceed per the try/fail/retry rules. Cycle: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+                  ;;
+                *)
+                  MSG="@copilot continue working on this task. Cycle: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+                  ;;
+              esac
+              gh issue comment "$ISSUE" --repo "$REPO" --body "$MSG"
+            fi
+            echo "::endgroup::"
+          done
