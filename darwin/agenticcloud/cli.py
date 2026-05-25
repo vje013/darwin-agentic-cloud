@@ -38,11 +38,16 @@ keys_app = typer.Typer(help="Manage signing keys.", no_args_is_help=True)
 attest_app = typer.Typer(help="Work with attestations.", no_args_is_help=True)
 history_app = typer.Typer(help="Query attestation history.", no_args_is_help=True)
 mcp_app = typer.Typer(help="Model Context Protocol (MCP) server.", no_args_is_help=True)
+substrates_app = typer.Typer(
+    help="Inspect and demo substrates (Phase 2).",
+    no_args_is_help=True,
+)
 
 app.add_typer(keys_app, name="keys")
 app.add_typer(attest_app, name="attest")
 app.add_typer(history_app, name="history")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(substrates_app, name="substrates")
 
 console = Console()
 err_console = Console(stderr=True)
@@ -609,3 +614,192 @@ def mcp_uninstall(
 
     console.print(f"[green]✓ Removed MCP server '{name}' from {client}.[/green]")
     console.print(f"  config: {config_path}")
+
+
+# ----------------------------------------------------------------------
+# substrates demo (Phase 2 — show me the v0.2 attestation)
+# ----------------------------------------------------------------------
+
+
+@substrates_app.command("demo")
+def substrates_demo(
+    substrate_id: Annotated[
+        str,
+        typer.Argument(help="Substrate id, e.g. 'aws-lambda-us-east-1' or 'local-docker-v0'."),
+    ],
+    code: Annotated[
+        str,
+        typer.Option("--code", "-c", help="Workload code to run (mocked)."),
+    ] = "print('Hello, agent.')",
+    language: Annotated[
+        str,
+        typer.Option("--language", "-l", help="Workload language."),
+    ] = "python",
+    timeout_sec: Annotated[
+        int,
+        typer.Option("--timeout", help="Workload timeout in seconds."),
+    ] = 30,
+    memory_mb: Annotated[
+        int,
+        typer.Option("--memory", help="Workload memory in MB."),
+    ] = 512,
+    cost_cap_usd: Annotated[
+        float,
+        typer.Option("--cost-cap", help="Workload cost cap in USD."),
+    ] = 0.01,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Emit raw JSON instead of the branded panel."),
+    ] = False,
+) -> None:
+    """Build a mocked v0.2 attestation for the given substrate and print it.
+
+    Does NOT touch AWS, Docker, Akash, or any external system. The
+    substrate's run() is short-circuited with a synthetic SandboxResult
+    or runner response, so this is safe to run anywhere.
+
+    Use this to inspect the v0.2 attestation shape before any real
+    substrate execution lands.
+    """
+    import os
+    from dataclasses import asdict
+
+    # Force operator-fallback signing (no network).
+    os.environ["DARWIN_SIGNER_URL"] = ""
+
+    from darwin.agenticcloud.hashing import content_hash, sha256_hex
+    from darwin.agenticcloud.substrate.base import (
+        RunResult,
+        build_attestation_dict,
+        iso8601_now,
+        sign_identity,
+    )
+    from darwin.agenticcloud.substrate.identity import OperatorFallbackSigner
+    from darwin.agenticcloud.types import WorkloadSpec
+
+    spec = WorkloadSpec(
+        code=code,
+        language=language,
+        timeout_sec=timeout_sec,
+        memory_mb=memory_mb,
+        cost_cap_usd=cost_cap_usd,
+    )
+
+    signer = OperatorFallbackSigner()
+    fake_stdout = "Hello, agent.\n"
+    output_hash = sha256_hex(fake_stdout.encode("utf-8"))
+    stderr_hash = sha256_hex(b"")
+
+    # Synthesize evidence per substrate. This keeps the demo
+    # zero-dependency while showing exactly the fields each substrate
+    # populates in production.
+    if substrate_id == "local-docker-v0":
+        from darwin.agenticcloud.substrate.local_docker import (
+            EVIDENCE_SCHEMA_ID,
+            SUBSTRATE_VERSION,
+        )
+
+        evidence = {
+            "container_status": "ok",
+            "exit_code": 0,
+            "stdout_hash": output_hash,
+            "stderr_hash": stderr_hash,
+            "wall_time_sec": 0.42,
+        }
+        substrate_version = SUBSTRATE_VERSION
+        evidence_schema_id = EVIDENCE_SCHEMA_ID
+        cost_usd = 0.000042  # 0.42s * $0.0001/s
+    elif substrate_id.startswith("aws-lambda-"):
+        from darwin.agenticcloud.substrate.aws_lambda import (
+            EVIDENCE_SCHEMA_ID,
+            SUBSTRATE_VERSION,
+            LambdaPricingClient,
+        )
+
+        region = substrate_id.removeprefix("aws-lambda-")
+        pricing = LambdaPricingClient()
+        try:
+            price = pricing.get(region)
+        except Exception as e:
+            err_console.print(f"[red]Unknown region:[/red] {e}")
+            raise typer.Exit(code=1) from e
+        billed_duration_ms = 423  # mocked
+        cost_usd = price.cost_for(
+            memory_mb=memory_mb,
+            billed_duration_ms=billed_duration_ms,
+        )
+        evidence = {
+            "request_id": "req-demo-deadbeef",
+            "log_group": f"/aws/lambda/darwin-runner-{language}-{region}",
+            "log_stream": "2026/05/25/[$LATEST]demo-stream-id",
+            "lambda_version": "$LATEST",
+            "region": region,
+            "billed_duration_ms": billed_duration_ms,
+            "memory_size_mb": memory_mb,
+            "max_memory_used_mb": 87,
+            "container_status": "ok",
+            "exit_code": 0,
+            "stdout_hash": output_hash,
+            "stderr_hash": stderr_hash,
+            "wall_time_sec": 0.42,
+        }
+        substrate_version = SUBSTRATE_VERSION
+        evidence_schema_id = EVIDENCE_SCHEMA_ID
+    else:
+        err_console.print(
+            f"[red]Unknown substrate:[/red] {substrate_id!r}\n"
+            f"Available: local-docker-v0, aws-lambda-{{region}}"
+        )
+        raise typer.Exit(code=1)
+
+    result = RunResult(
+        substrate_id=substrate_id,
+        substrate_version=substrate_version,
+        workload_spec_hash=content_hash(asdict(spec)),
+        stdout=fake_stdout,
+        stderr="",
+        output_hash=output_hash,
+        cost_usd=cost_usd,
+        evidence_schema_id=evidence_schema_id,
+        evidence=evidence,
+        extensions={},
+        tee_required=False,
+        issued_at=iso8601_now(),
+    )
+
+    identity = sign_identity(result=result, signer=signer)
+    attestation = build_attestation_dict(
+        attestation_id=f"att_demo_{substrate_id}",
+        result=result,
+        identity=identity,
+    )
+
+    # Outer signature — operator key signs the JCS-canonical
+    # attestation_dict, same as the runtime will do in step 7.
+    from darwin.agenticcloud.hashing import canonical_json
+
+    outer_sig = signer._signer.sign(canonical_json(attestation))
+
+    envelope = {
+        **attestation,
+        "signer_key_id": signer.signer_key_id,
+        "signature": outer_sig,
+    }
+
+    if as_json:
+        console.print(json.dumps(envelope, indent=2, sort_keys=True))
+        return
+
+    from darwin.agenticcloud.ui import render_attestation_panel_auto
+
+    console.print()
+    console.print(
+        f"[dim]demo ·[/dim] [bold]{substrate_id}[/bold]   "
+        f"[dim](mocked — no AWS / Docker / network calls)[/dim]"
+    )
+    console.print()
+    console.print(render_attestation_panel_auto(envelope))
+    console.print()
+    console.print(
+        f"[dim]for raw json:[/dim] [bold]darwin substrates demo {substrate_id} --json[/bold]"
+    )
