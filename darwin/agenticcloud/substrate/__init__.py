@@ -1,0 +1,41 @@
+"""Substrate adapters and abstractions for Darwin Agentic Cloud."""
+
+from darwin.agenticcloud.substrate.base import (
+    ATTESTATION_SCHEMA_URI,
+    EVIDENCE_REGISTRY,
+    CostEstimate,
+    EvidenceRegistry,
+    EvidenceSchema,
+    EvidenceSchemaError,
+    PreflightRejected,
+    RunResult,
+    Substrate,
+    SubstrateError,
+    SubstrateExecutionError,
+    SubstrateIdentity,
+    SubstrateIdentitySigner,
+    build_attestation_dict,
+    build_identity_payload,
+    iso8601_now,
+    sign_identity,
+)
+
+__all__ = [
+    "ATTESTATION_SCHEMA_URI",
+    "EVIDENCE_REGISTRY",
+    "CostEstimate",
+    "EvidenceRegistry",
+    "EvidenceSchema",
+    "EvidenceSchemaError",
+    "PreflightRejected",
+    "RunResult",
+    "Substrate",
+    "SubstrateError",
+    "SubstrateExecutionError",
+    "SubstrateIdentity",
+    "SubstrateIdentitySigner",
+    "build_attestation_dict",
+    "build_identity_payload",
+    "iso8601_now",
+    "sign_identity",
+]
