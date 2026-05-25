@@ -11,22 +11,42 @@ Endpoints:
     GET  /v0/attestations                  — list recent attestations
     GET  /v0/attestations/{id}             — fetch a specific attestation
     GET  /v0/attestations/stats            — aggregate stats
+
+    POST /v0/sign-substrate-identity       — sign a substrate identity payload (Phase 2)
+    GET  /.well-known/substrate-keys.json  — public keylist for substrate-class keys (Phase 2)
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from darwin import agenticcloud as dac
 from darwin.agenticcloud.attestation import verify_attestation
+from darwin.agenticcloud.class_keys import (
+    ClassKeyError,
+    ClassKeyNotFound,
+    ClassKeyStore,
+    SubstrateNotAllowed,
+)
 from darwin.agenticcloud.runtime import Runtime
 from darwin.agenticcloud.sandbox import SUBSTRATE_ID
 from darwin.agenticcloud.signing import Signer
 from darwin.agenticcloud.storage import AttestationStore
+from darwin.agenticcloud.substrate.base import IDENTITY_DOMAIN_SEPARATOR
+from darwin.agenticcloud.substrate.identity import (
+    ED25519_SIGNATURE_BYTES,
+    MAX_PAYLOAD_BYTES,
+)
 from darwin.agenticcloud.types import WorkloadSpec
 
 
@@ -89,13 +109,41 @@ class AttestationStatsResponse(BaseModel):
     by_status: dict[str, int]
 
 
+class SignSubstrateIdentityRequest(BaseModel):
+    """Request body for POST /v0/sign-substrate-identity."""
+
+    substrate_id: str = Field(..., description="Substrate id, e.g. 'local-docker-v0'.")
+    payload_b64: str = Field(
+        ..., description="Base64-encoded JCS-canonical identity payload to sign."
+    )
+
+
+class SignSubstrateIdentityResponse(BaseModel):
+    """Response body for POST /v0/sign-substrate-identity."""
+
+    substrate_id: str
+    signer_key_id: str
+    signature_b64: str
+
+
 # -------------------------------------------------------------------
 # App factory
 # -------------------------------------------------------------------
-def create_app(runtime: Runtime | None = None) -> FastAPI:
-    """Build a FastAPI app with the given runtime (or a default one)."""
+def create_app(
+    runtime: Runtime | None = None,
+    class_key_store: ClassKeyStore | None = None,
+) -> FastAPI:
+    """Build a FastAPI app with the given runtime (or a default one).
+
+    `class_key_store` defaults to a fresh ClassKeyStore which honors the
+    DARWIN_CLASS_KEYS_DIR env var. Tests pass an explicit one pointing at
+    a temp dir.
+    """
     rt = runtime or Runtime()
     store: AttestationStore = rt.store
+    cks: ClassKeyStore = class_key_store if class_key_store is not None else ClassKeyStore()
+
+    limiter = Limiter(key_func=get_remote_address)
 
     app = FastAPI(
         title="Darwin Agentic Cloud",
@@ -104,6 +152,17 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
         docs_url="/docs/swagger",
         redoc_url="/docs/redoc",
     )
+
+    # Attach limiter to app state so the decorator can find it.
+    app.state.limiter = limiter
+
+    @app.exception_handler(RateLimitExceeded)
+    async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"Rate limit exceeded: {exc.detail}"},
+            headers={"Retry-After": "60"},
+        )
 
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:
@@ -206,6 +265,130 @@ def create_app(runtime: Runtime | None = None) -> FastAPI:
         if fetched is None:
             raise HTTPException(status_code=404, detail="Attestation not found")
         return fetched.signed_attestation
+
+    # -----------------------------------------------------------------
+    # Phase 2: substrate identity signing
+    # -----------------------------------------------------------------
+
+    @app.post(
+        "/v0/sign-substrate-identity",
+        response_model=SignSubstrateIdentityResponse,
+        tags=["substrate"],
+    )
+    @limiter.limit("60/minute")
+    async def sign_substrate_identity(
+        request: Request,
+        req: SignSubstrateIdentityRequest,
+    ) -> SignSubstrateIdentityResponse:
+        """Sign a substrate identity payload with the server-side class key.
+
+        Validates the payload before signing:
+        - Decodes base64
+        - Bounded payload size
+        - Confirms the payload is JCS-canonical JSON
+        - Confirms the domain separator matches our constant
+        - Confirms the payload's claimed substrate_id matches the request
+        - Confirms the substrate is in the server's allowlist
+        - Confirms a class key exists for that substrate
+
+        Returns the raw Ed25519 signature, base64-encoded.
+        """
+        # Decode payload.
+        try:
+            payload_bytes = base64.b64decode(req.payload_b64, validate=True)
+        except (ValueError, TypeError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"payload_b64 is not valid base64: {e}",
+            ) from e
+
+        if len(payload_bytes) == 0:
+            raise HTTPException(status_code=400, detail="payload is empty")
+        if len(payload_bytes) > MAX_PAYLOAD_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"payload exceeds max size: {len(payload_bytes)} > {MAX_PAYLOAD_BYTES}"),
+            )
+
+        # Validate payload is JCS-canonical JSON with the expected fields.
+        try:
+            decoded = json.loads(payload_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"payload is not valid UTF-8 JSON: {e}",
+            ) from e
+
+        if not isinstance(decoded, dict):
+            raise HTTPException(status_code=400, detail="payload must be a JSON object")
+
+        # Domain separator must match our constant. Prevents replay across
+        # signature types.
+        if decoded.get("domain") != IDENTITY_DOMAIN_SEPARATOR:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"payload domain mismatch: expected "
+                    f"{IDENTITY_DOMAIN_SEPARATOR!r}, got {decoded.get('domain')!r}"
+                ),
+            )
+
+        # Payload's substrate_id must match the request's substrate_id.
+        # Defense against confused-deputy: caller can't sign one substrate's
+        # payload using a different substrate's key.
+        if decoded.get("substrate_id") != req.substrate_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"payload substrate_id {decoded.get('substrate_id')!r} "
+                    f"does not match request substrate_id {req.substrate_id!r}"
+                ),
+            )
+
+        # Sign with the class key for this substrate.
+        try:
+            sig_bytes, signer_key_id = cks.sign(req.substrate_id, payload_bytes)
+        except SubstrateNotAllowed as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except ClassKeyNotFound as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        except ClassKeyError as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+        if len(sig_bytes) != ED25519_SIGNATURE_BYTES:  # pragma: no cover
+            # Defense in depth — Ed25519 always produces 64-byte sigs.
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"signature length wrong: {len(sig_bytes)} bytes "
+                    f"(expected {ED25519_SIGNATURE_BYTES})"
+                ),
+            )
+
+        return SignSubstrateIdentityResponse(
+            substrate_id=req.substrate_id,
+            signer_key_id=signer_key_id,
+            signature_b64=base64.b64encode(sig_bytes).decode("ascii"),
+        )
+
+    @app.get(
+        "/.well-known/substrate-keys.json",
+        tags=["substrate"],
+        include_in_schema=True,
+    )
+    async def well_known_substrate_keys() -> dict[str, Any]:
+        """Public keylist for substrate-class keys.
+
+        Verifiers fetch this to resolve `substrate.identity_signer_key_id`
+        to a public key. The keylist includes both active and rotated keys
+        so historical attestations remain verifiable after rotation.
+
+        Cached aggressively at the CDN/proxy layer (5 minutes). The active
+        key for a given substrate changes only at rotation time, and even
+        then the old key remains in the list.
+        """
+        keylist = cks.keylist()
+        return keylist
 
     # Custom branded docs page (Material 3, dark, brand colors)
     from pathlib import Path as _Path

@@ -42,6 +42,7 @@ dependencies = [
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.32,<1",
     "httpx>=0.27,<1",
+    "slowapi>=0.1.9,<1",
 
     # CLI
     "typer>=0.13,<1",
