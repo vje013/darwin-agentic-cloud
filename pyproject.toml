@@ -64,7 +64,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.4,<1",
+    "ruff>=0.15.14,<1",
     "mypy>=1.10,<2",
     "types-requests",
     "pre-commit>=3.7,<5",
