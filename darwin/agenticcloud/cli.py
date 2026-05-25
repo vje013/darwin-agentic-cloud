@@ -23,6 +23,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from darwin.agenticcloud.admin_cli import admin_app
 from darwin.agenticcloud.attestation import verify_attestation
 from darwin.agenticcloud.runtime import Runtime
 from darwin.agenticcloud.signing import Signer
@@ -48,6 +49,7 @@ app.add_typer(attest_app, name="attest")
 app.add_typer(history_app, name="history")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(substrates_app, name="substrates")
+app.add_typer(admin_app, name="admin")
 
 console = Console()
 err_console = Console(stderr=True)
