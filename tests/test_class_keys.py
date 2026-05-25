@@ -117,11 +117,11 @@ class TestGenerateClassKey:
 class TestRotateClassKey:
     def test_rotation_moves_old_key_to_archive(self, tmp_path):
         keys_dir = tmp_path / "keys"
-        old_path, old_kid = generate_class_key(keys_dir, "local-docker-v0")
+        old_path, _old_kid = generate_class_key(keys_dir, "local-docker-v0")
         old_pem_bytes = old_path.read_bytes()
         # Ensure rotation timestamp differs from creation.
         time.sleep(1.01)
-        new_path, new_kid = rotate_class_key(keys_dir, "local-docker-v0")
+        new_path, _new_kid = rotate_class_key(keys_dir, "local-docker-v0")
         # Archive directory exists with exactly one rotated PEM.
         archive_dir = keys_dir / "local-docker-v0.pem.rotated"
         assert archive_dir.exists()
