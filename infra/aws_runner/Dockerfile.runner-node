@@ -1,0 +1,14 @@
+# darwin-runner Lambda image (Node.js).
+#
+# Built and pushed to ECR by infra/aws_runner/deploy.py. Deployed to:
+#   darwin-runner-node-{region}  (one per region)
+#
+# Base: AWS Lambda Node.js 20 runtime image with the Runtime Interface
+# Client (RIC) and bootstrap pre-installed.
+
+FROM public.ecr.aws/lambda/nodejs:20
+
+# Copy the handler. AWS Lambda picks up runner.handler as the entry.
+COPY runner.mjs ${LAMBDA_TASK_ROOT}/
+
+CMD ["runner.handler"]

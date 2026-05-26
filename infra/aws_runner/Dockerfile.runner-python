@@ -1,0 +1,18 @@
+# darwin-runner Lambda image (Python language).
+#
+# Built and pushed to ECR by infra/aws_runner/deploy.py. Deployed to:
+#   darwin-runner-python-{region}  (one per region)
+#
+# Base: AWS Lambda Python 3.12 runtime image. This image is pre-loaded
+# with the Lambda Runtime Interface Client (RIC) and the bootstrap that
+# AWS Lambda expects. We just add our handler on top.
+
+FROM public.ecr.aws/lambda/python:3.12
+
+# Copy the handler. AWS Lambda looks for the handler at the path
+# specified by the function's Handler config (set by deploy.py to
+# "runner.lambda_handler").
+COPY runner.py ${LAMBDA_TASK_ROOT}/
+
+# Container command tells Lambda RIC which handler to invoke.
+CMD ["runner.lambda_handler"]

@@ -44,6 +44,7 @@ dependencies = [
     "httpx>=0.27,<1",
     "slowapi>=0.1.9,<1",
     "aiobotocore>=2.15,<3",
+    "boto3>=1.35,<2",
 
     # CLI
     "typer>=0.13,<1",
