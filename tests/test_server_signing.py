@@ -260,11 +260,11 @@ class TestSignSubstrateIdentityValidation:
     def test_rejects_non_allowlisted_substrate(self, client):
         """Substrate not in ALLOWED_SUBSTRATES → 400 with clear reason."""
         # Build a payload with a not-yet-built substrate.
-        payload = _valid_payload_bytes(substrate_id="aws-lambda-us-east-1")
+        payload = _valid_payload_bytes(substrate_id="e2b-v0")
         resp = client.post(
             "/v0/sign-substrate-identity",
             json={
-                "substrate_id": "aws-lambda-us-east-1",
+                "substrate_id": "e2b-v0",
                 "payload_b64": base64.b64encode(payload).decode("ascii"),
             },
         )
@@ -365,8 +365,17 @@ class TestPhase1RoutesIntact:
 
 
 class TestAllowlistConsistency:
-    def test_allowlist_currently_only_local_docker(self):
-        """Sanity: Phase 2 ships with local-docker-v0 only in the
-        allowlist. When AWS Lambda / Modal / Akash adapters land, this
-        test gets updated alongside the allowlist."""
-        assert frozenset({"local-docker-v0"}) == ALLOWED_SUBSTRATES
+    def test_allowlist_includes_v300_substrates(self):
+        """Sanity: Phase 2 v3.0.0 allowlist covers local-docker-v0,
+        the four aws-lambda regions, modal-v0, and akash-v0. When new
+        substrates are added in v3.1+, this test gets updated alongside
+        the allowlist."""
+        assert frozenset({
+            "local-docker-v0",
+            "aws-lambda-us-east-1",
+            "aws-lambda-us-west-2",
+            "aws-lambda-eu-west-1",
+            "aws-lambda-ap-northeast-1",
+            "modal-v0",
+            "akash-v0",
+        }) == ALLOWED_SUBSTRATES

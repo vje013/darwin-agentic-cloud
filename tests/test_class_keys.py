@@ -101,7 +101,7 @@ class TestGenerateClassKey:
     def test_refuses_non_allowlisted_substrate(self, tmp_path):
         keys_dir = tmp_path / "keys"
         with pytest.raises(SubstrateNotAllowed):
-            generate_class_key(keys_dir, "aws-lambda-us-east-1")
+            generate_class_key(keys_dir, "e2b-v0")
 
     def test_creates_keys_dir_if_missing(self, tmp_path):
         keys_dir = tmp_path / "does-not-exist-yet"
@@ -151,7 +151,7 @@ class TestRotateClassKey:
         keys_dir = tmp_path / "keys"
         keys_dir.mkdir()
         with pytest.raises(SubstrateNotAllowed):
-            rotate_class_key(keys_dir, "aws-lambda-us-east-1")
+            rotate_class_key(keys_dir, "e2b-v0")
 
 
 # ============================================================================
@@ -173,7 +173,7 @@ class TestClassKeyStoreSign:
         keys_dir.mkdir()
         store = ClassKeyStore(keys_dir=keys_dir)
         with pytest.raises(SubstrateNotAllowed, match="allowlist"):
-            store.sign("aws-lambda-us-east-1", b"x")
+            store.sign("e2b-v0", b"x")
 
     def test_sign_raises_when_no_active_key(self, tmp_path):
         keys_dir = tmp_path / "keys"
@@ -225,13 +225,13 @@ class TestRoguePemDefense:
         in a future release."""
         keys_dir = tmp_path / "keys"
         keys_dir.mkdir()
-        _write_rogue_pem(keys_dir, "aws-lambda-us-east-1")
+        _write_rogue_pem(keys_dir, "e2b-v0")
         # Also add a legitimate key so the store has SOMETHING to load.
         generate_class_key(keys_dir, "local-docker-v0")
         store = ClassKeyStore(keys_dir=keys_dir)
         # The rogue key is silently ignored.
         with pytest.raises(SubstrateNotAllowed):
-            store.sign("aws-lambda-us-east-1", b"x")
+            store.sign("e2b-v0", b"x")
         # The legitimate key still signs.
         sig, _ = store.sign("local-docker-v0", b"x")
         assert len(sig) == 64
@@ -293,7 +293,7 @@ class TestKeylist:
         """Rotated archive for a non-allowlisted substrate is ignored."""
         keys_dir = tmp_path / "keys"
         keys_dir.mkdir()
-        rogue_archive = keys_dir / "aws-lambda-us-east-1.pem.rotated"
+        rogue_archive = keys_dir / "e2b-v0.pem.rotated"
         rogue_archive.mkdir(parents=True)
         # Write a valid PEM into the rogue archive.
         priv = Ed25519PrivateKey.generate()
@@ -310,7 +310,7 @@ class TestKeylist:
             k["substrate_id"] == "local-docker-v0" or k["substrate_id"] in ALLOWED_SUBSTRATES
             for k in keylist["keys"]
         )
-        rogue_entries = [k for k in keylist["keys"] if k["substrate_id"] == "aws-lambda-us-east-1"]
+        rogue_entries = [k for k in keylist["keys"] if k["substrate_id"] == "e2b-v0"]
         assert rogue_entries == []
 
 
