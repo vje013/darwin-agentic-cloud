@@ -56,6 +56,10 @@ materialize_key() {
 # darwin.agenticcloud.class_keys.ALLOWED_SUBSTRATES. When a new
 # substrate is allowlisted, add a line here.
 materialize_key "local-docker-v0" "DARWIN_CLASS_KEY_LOCAL_DOCKER_V0"
+materialize_key "aws-lambda-us-east-1" "DARWIN_CLASS_KEY_AWS_LAMBDA_US_EAST_1"
+materialize_key "aws-lambda-us-west-2" "DARWIN_CLASS_KEY_AWS_LAMBDA_US_WEST_2"
+materialize_key "aws-lambda-eu-west-1" "DARWIN_CLASS_KEY_AWS_LAMBDA_EU_WEST_1"
+materialize_key "aws-lambda-ap-northeast-1" "DARWIN_CLASS_KEY_AWS_LAMBDA_AP_NORTHEAST_1"
 
 # Hand off to the original CMD (uvicorn / darwin serve).
 exec "$@"
