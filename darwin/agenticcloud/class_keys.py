@@ -85,6 +85,12 @@ KEYLIST_SCHEMA_URI = "darwin.cloud/agenticcloud/substrate-keys/v1"
 ALLOWED_SUBSTRATES: frozenset[str] = frozenset(
     {
         "local-docker-v0",
+        "aws-lambda-us-east-1",
+        "aws-lambda-us-west-2",
+        "aws-lambda-eu-west-1",
+        "aws-lambda-ap-northeast-1",
+        "modal-v0",
+        "akash-v0",
     }
 )
 

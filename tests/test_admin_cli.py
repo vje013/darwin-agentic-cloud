@@ -86,7 +86,7 @@ class TestGenerate:
     def test_refuses_non_allowlisted(self, tmp_path):
         result = runner.invoke(
             admin_app,
-            ["class-keys", "generate", "aws-lambda-us-east-1", "--out-dir", str(tmp_path)],
+            ["class-keys", "generate", "e2b-v0", "--out-dir", str(tmp_path)],
         )
         assert result.exit_code == 2
         assert "non-allowlisted" in result.output
@@ -144,7 +144,7 @@ class TestRotate:
     def test_rotate_non_allowlisted_substrate_fails(self, tmp_path):
         result = runner.invoke(
             admin_app,
-            ["class-keys", "rotate", "modal-v0", "--keys-dir", str(tmp_path)],
+            ["class-keys", "rotate", "e2b-v0", "--keys-dir", str(tmp_path)],
         )
         assert result.exit_code == 2
 
