@@ -370,12 +370,17 @@ class TestAllowlistConsistency:
         the four aws-lambda regions, modal-v0, and akash-v0. When new
         substrates are added in v3.1+, this test gets updated alongside
         the allowlist."""
-        assert frozenset({
-            "local-docker-v0",
-            "aws-lambda-us-east-1",
-            "aws-lambda-us-west-2",
-            "aws-lambda-eu-west-1",
-            "aws-lambda-ap-northeast-1",
-            "modal-v0",
-            "akash-v0",
-        }) == ALLOWED_SUBSTRATES
+        assert (
+            frozenset(
+                {
+                    "local-docker-v0",
+                    "aws-lambda-us-east-1",
+                    "aws-lambda-us-west-2",
+                    "aws-lambda-eu-west-1",
+                    "aws-lambda-ap-northeast-1",
+                    "modal-v0",
+                    "akash-v0",
+                }
+            )
+            == ALLOWED_SUBSTRATES
+        )
