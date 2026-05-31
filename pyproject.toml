@@ -57,7 +57,7 @@ dependencies = [
     "mcp>=1.0,<2",
 
     # Storage
-    "sqlalchemy>=2.0,<3",
+    "sqlalchemy>=2.0.50,<3",
     "aiosqlite>=0.20,<1",
 
     # Observability
