@@ -71,7 +71,7 @@ dev = [
     "ruff>=0.7,<1",
     "mypy>=1.13,<3",
     "types-requests",
-    "pre-commit>=4.0,<5",
+    "pre-commit>=4.6.0,<5",
 ]
 test = [
     "pytest>=8.3,<10",
