@@ -37,6 +37,16 @@ Required evidence fields:
 - stdout_hash         sha256 of stdout
 - stderr_hash         sha256 of stderr
 
+Optional evidence fields (present when the real Modal factory ran):
+- provision_sec       seconds spent before the sandbox started: app lookup,
+                      image build or pull, scheduling. Not billed as workload
+                      time and excluded from cost_usd.
+
+`wall_time_sec` covers the sandbox run only (create returned -> wait
+returned). A first run of a new image can spend minutes in provisioning;
+booking that as execution would overstate cost by orders of magnitude and
+blow through the preflight ceiling the cost cap was enforced against.
+
 Identity signing: per spec, every substrate signs its own identity
 declaration. `identity_signer()` resolves via `resolve_identity_signer()`
 which routes to RemoteClassKeySigner (hosted) or OperatorFallbackSigner
@@ -142,6 +152,13 @@ class SandboxFactory(Protocol):
         stderr            str
         exit_code         int  (subprocess exit code, -1 if killed)
         container_status  str  ("ok" | "error" | "timeout" | "killed")
+
+    Optional keys (the real factory sets them; fakes may omit):
+        wall_time_sec     float  sandbox run time, create -> wait
+        provision_sec     float  time before the sandbox started
+
+    When `wall_time_sec` is absent the adapter falls back to timing the
+    whole factory call, which is only honest for in-process fakes.
     """
 
     def __call__(
@@ -332,7 +349,11 @@ class ModalSubstrate(Substrate):
             raise
         ended_at = time.time()
 
-        wall_time_sec = ended_at - started_at
+        # Prefer the factory's own split timing. The real factory reports
+        # sandbox run time separately from provisioning (image build/pull,
+        # scheduling); the end-to-end clock is a fallback for fakes.
+        wall_time_sec = float(sandbox_result.get("wall_time_sec", ended_at - started_at))
+        provision_sec = sandbox_result.get("provision_sec")
         cost_usd = wall_time_sec * WHOLESALE_COST_PER_WALL_SECOND_USD
 
         stdout = sandbox_result["stdout"]
@@ -355,6 +376,8 @@ class ModalSubstrate(Substrate):
             "stdout_hash": f"sha256:{stdout_hash_hex}",
             "stderr_hash": f"sha256:{stderr_hash_hex}",
         }
+        if provision_sec is not None:
+            evidence["provision_sec"] = float(provision_sec)
 
         # Substrate-described failure: emit partial evidence via
         # SubstrateExecutionError so the runtime can still build a
@@ -406,6 +429,7 @@ def _real_modal_sandbox_factory(
             "modal package not installed. Install with: pip install modal"
         ) from e
 
+    t_enter = time.time()
     try:
         app = modal.App.lookup(
             "darwin-agentic-cloud-ephemeral",
@@ -430,8 +454,10 @@ def _real_modal_sandbox_factory(
             memory=memory_mb,
             timeout=timeout_sec,
         )
+        t_started = time.time()
         sandbox_id = getattr(sb, "object_id", "unknown")
         sb.wait()
+        t_done = time.time()
         stdout_raw = sb.stdout.read() if sb.stdout is not None else b""
         stderr_raw = sb.stderr.read() if sb.stderr is not None else b""
         exit_code = sb.returncode if sb.returncode is not None else -1
@@ -460,6 +486,10 @@ def _real_modal_sandbox_factory(
             "stderr": stderr,
             "exit_code": exit_code,
             "container_status": container_status,
+            # Sandbox run only. Provisioning (app lookup, image build or
+            # pull, scheduling) is reported separately and not billed.
+            "wall_time_sec": t_done - t_started,
+            "provision_sec": t_started - t_enter,
         }
         with contextlib.suppress(Exception):
             sb.terminate()

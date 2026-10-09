@@ -63,6 +63,10 @@ def main() -> int:
     print(f"  output_hash: {result.output_hash[:16]}...")
     print(f"  cost_usd:    {result.cost_usd:.6f}")
     print(f"  evidence:    {result.evidence}")
+    print(f"  run time:    {result.evidence['wall_time_sec']:.2f}s (billed)")
+    print(
+        f"  provision:   {result.evidence.get('provision_sec', 0.0):.2f}s (image build/pull + scheduling, not billed)"
+    )
     if result.evidence["image_tag"] != args.image:
         print(f"  MISMATCH: evidence.image_tag={result.evidence['image_tag']!r} != {args.image!r}")
         return 1

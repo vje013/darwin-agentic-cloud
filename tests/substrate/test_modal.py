@@ -284,6 +284,35 @@ class TestRunHappyPath:
         assert captured["cpu_cores"] == 0.5
         assert captured["memory_mb"] == 1024
 
+    def test_factory_timing_split_drives_cost_not_end_to_end_clock(self, stub_signer):
+        # A 20-minute image build on a first run must not be booked as
+        # workload time. The real factory reports run time and provisioning
+        # separately; cost follows run time only.
+        def factory(**kw):
+            r = _ok_factory()(**kw)
+            r["wall_time_sec"] = 1.5
+            r["provision_sec"] = 1200.0
+            return r
+
+        s = ModalSubstrate(identity_signer=stub_signer, sandbox_factory=factory)
+        result = s.run(_make_workload(timeout_sec=30))
+        assert result.evidence["wall_time_sec"] == 1.5
+        assert result.evidence["provision_sec"] == 1200.0
+        assert result.cost_usd == pytest.approx(1.5 * WHOLESALE_COST_PER_WALL_SECOND_USD)
+        # Actual cost sits under the preflight ceiling the cap was checked against.
+        est = s.preflight(_make_workload(timeout_sec=30))
+        assert result.cost_usd < est.cost_usd_max
+        EVIDENCE_REGISTRY.validate(EVIDENCE_SCHEMA_ID, result.evidence)
+
+    def test_factory_without_timing_falls_back_to_end_to_end_clock(self, stub_signer):
+        s = ModalSubstrate(identity_signer=stub_signer, sandbox_factory=_ok_factory())
+        result = s.run(_make_workload())
+        assert result.evidence["wall_time_sec"] >= 0.0
+        assert "provision_sec" not in result.evidence
+        assert result.cost_usd == pytest.approx(
+            result.evidence["wall_time_sec"] * WHOLESALE_COST_PER_WALL_SECOND_USD
+        )
+
     def test_custom_registry_tag_reaches_sandbox_and_evidence(self, stub_signer):
         # A VerifyAI engine image on GHCR must flow through untouched and be
         # named in the signed evidence, so the attestation pins the image.

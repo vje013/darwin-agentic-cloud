@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `materialize_key` line names an allowlisted substrate with the conventional
   env var (only `akash-v0` may lack a line).
 
+### Fixed
+
+- Modal substrate booked provisioning time (app lookup, image build or pull,
+  scheduling) as workload execution. A first run of `python:3.11-slim` reported
+  `wall_time_sec` 1272 s and `cost_usd` $0.17 for a one-line print with a 30 s
+  timeout, 36x the preflight ceiling the cost cap had been enforced against.
+  The real factory now reports `wall_time_sec` (sandbox create to wait) and
+  `provision_sec` separately; `cost_usd` follows run time only, and
+  `provision_sec` is an optional evidence field.
+
 ### Changed
 
 - Modal substrate `MAX_WALL_TIME_SEC` raised from 900 s to 3600 s. The 900 s
