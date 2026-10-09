@@ -137,7 +137,7 @@ class TestABCConformance:
         assert SUBSTRATE_ID == "modal-v0"
         assert EVIDENCE_SCHEMA_ID == "darwin.cloud/evidence/modal/v1"
         assert frozenset({"python", "node"}) == SUPPORTED_LANGUAGES
-        assert MAX_WALL_TIME_SEC == 900
+        assert MAX_WALL_TIME_SEC == 3600
         assert DEFAULT_PYTHON_IMAGE.startswith("python:")
         assert DEFAULT_NODE_IMAGE.startswith("node:")
 
@@ -190,6 +190,18 @@ class TestPreflight:
         s = ModalSubstrate(identity_signer=stub_signer, sandbox_factory=_ok_factory())
         with pytest.raises(PreflightRejected, match="timeout_sec"):
             s.preflight(_make_workload(timeout_sec=MAX_WALL_TIME_SEC + 1))
+
+    def test_one_hour_timeout_accepted_at_ceiling(self, stub_signer):
+        # Long agent trials (tau3-bench style) need the full hour; the
+        # ceiling itself must pass preflight, and the estimate must be the
+        # honest upper bound (cold start + full wall time).
+        s = ModalSubstrate(identity_signer=stub_signer, sandbox_factory=_ok_factory())
+        est = s.preflight(_make_workload(timeout_sec=MAX_WALL_TIME_SEC))
+        expected = (
+            ESTIMATED_COLD_START_SEC + MAX_WALL_TIME_SEC
+        ) * WHOLESALE_COST_PER_WALL_SECOND_USD
+        assert est.cost_usd_max == pytest.approx(expected)
+        assert est.cost_usd_max < 0.50
 
     def test_cost_breakdown_includes_cold_start(self, stub_signer):
         s = ModalSubstrate(identity_signer=stub_signer, sandbox_factory=_ok_factory())
@@ -271,6 +283,38 @@ class TestRunHappyPath:
         assert captured["image_tag"] == "python:3.11-bullseye"
         assert captured["cpu_cores"] == 0.5
         assert captured["memory_mb"] == 1024
+
+    def test_custom_registry_tag_reaches_sandbox_and_evidence(self, stub_signer):
+        # A VerifyAI engine image on GHCR must flow through untouched and be
+        # named in the signed evidence, so the attestation pins the image.
+        tag = "ghcr.io/darwin-adaptive/verifyai-engine:sha-0123abcd"
+        captured = {}
+
+        def factory(**kw):
+            captured.update(kw)
+            return _ok_factory()(**kw)
+
+        cfg = ModalConfig(image_python=tag)
+        s = ModalSubstrate(config=cfg, identity_signer=stub_signer, sandbox_factory=factory)
+        result = s.run(_make_workload(language="python"))
+        assert captured["image_tag"] == tag
+        assert result.evidence["image_tag"] == tag
+        # Evidence with a custom tag still validates against the registry.
+        EVIDENCE_REGISTRY.validate(EVIDENCE_SCHEMA_ID, result.evidence)
+
+    def test_custom_node_tag_used_for_node_workloads(self, stub_signer):
+        tag = "ghcr.io/darwin-adaptive/verifyai-engine-node:sha-0123abcd"
+        captured = {}
+
+        def factory(**kw):
+            captured.update(kw)
+            return _ok_factory()(**kw)
+
+        cfg = ModalConfig(image_node=tag)
+        s = ModalSubstrate(config=cfg, identity_signer=stub_signer, sandbox_factory=factory)
+        result = s.run(_make_workload(language="node"))
+        assert captured["image_tag"] == tag
+        assert result.evidence["image_tag"] == tag
 
 
 # ============================================================================

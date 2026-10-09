@@ -61,6 +61,7 @@ materialize_key "aws-lambda-us-west-2" "DARWIN_CLASS_KEY_AWS_LAMBDA_US_WEST_2"
 materialize_key "aws-lambda-eu-west-1" "DARWIN_CLASS_KEY_AWS_LAMBDA_EU_WEST_1"
 materialize_key "aws-lambda-ap-northeast-1" "DARWIN_CLASS_KEY_AWS_LAMBDA_AP_NORTHEAST_1"
 materialize_key "aws-batch-ec2-spot-v0-us-east-1" "DARWIN_CLASS_KEY_AWS_BATCH_EC2_SPOT_V0_US_EAST_1"
+materialize_key "modal-v0" "DARWIN_CLASS_KEY_MODAL_V0"
 
 # Hand off to the original CMD (uvicorn / darwin serve).
 exec "$@"

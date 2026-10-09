@@ -347,6 +347,49 @@ class TestEntrypointScript:
         assert mode == 0o600
         assert pem_path.read_bytes() == pem
 
+    def test_materializes_modal_v0_key(self, script_path, tmp_path):
+        # modal-v0 was allowlisted in v3.0.0 but never materialized; the
+        # VerifyAI trial runner anchors its receipts to this key.
+        pem = _make_pem_bytes()
+        env = os.environ.copy()
+        env["DARWIN_CLASS_KEYS_DIR"] = str(tmp_path)
+        env["DARWIN_CLASS_KEY_MODAL_V0"] = pem.decode("utf-8")
+
+        result = subprocess.run(
+            [str(script_path), "echo", "exec-reached"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert "modal-v0" in result.stdout
+        pem_path = tmp_path / "modal-v0.pem"
+        assert pem_path.exists()
+        assert pem_path.stat().st_mode & 0o777 == 0o600
+        assert pem_path.read_bytes() == pem
+        # The server loads it under the same substrate id.
+        store = ClassKeyStore(keys_dir=tmp_path)
+        assert store.has_active_key("modal-v0")
+
+    def test_entrypoint_materializes_only_allowlisted_substrates(self, script_path):
+        # Every materialize_key line must name an allowlisted substrate, and
+        # every substrate with a live adapter must have a line. akash-v0 is
+        # allowlisted ahead of its adapter and is the one permitted gap.
+        import re
+
+        from darwin.agenticcloud.class_keys import ALLOWED_SUBSTRATES
+
+        text = script_path.read_text()
+        pairs = re.findall(r'^materialize_key "([^"]+)" "([^"]+)"', text, flags=re.M)
+        materialized = {sub for sub, _ in pairs}
+        assert materialized <= ALLOWED_SUBSTRATES
+        assert "modal-v0" in materialized
+        assert ALLOWED_SUBSTRATES - materialized <= {"akash-v0"}
+        for sub, env_var in pairs:
+            assert env_var == "DARWIN_CLASS_KEY_" + sub.upper().replace("-", "_")
+
     def test_skips_when_env_unset(self, script_path, tmp_path):
         env = os.environ.copy()
         env["DARWIN_CLASS_KEYS_DIR"] = str(tmp_path)

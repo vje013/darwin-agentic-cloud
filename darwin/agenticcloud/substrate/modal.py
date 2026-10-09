@@ -110,8 +110,11 @@ WHOLESALE_COST_PER_WALL_SECOND_USD: float = 0.000131
 #: honest cost comparison across substrates.
 ESTIMATED_COLD_START_SEC: float = 5.0
 
-#: Max wall time. Mirrors AWS Lambda ceiling.
-MAX_WALL_TIME_SEC: int = 900
+#: Max wall time. Modal sandboxes accept timeouts up to 24 hours; DAC caps a
+#: single workload at one hour so a runaway sandbox is bounded to roughly
+#: $0.47 wholesale at the default 0.125-core size. Raised from 900 s (the AWS
+#: Lambda ceiling it originally mirrored) in v3.0.4 for long agent trials.
+MAX_WALL_TIME_SEC: int = 3600
 
 #: Supported workload languages.
 SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"python", "node"})
@@ -204,6 +207,15 @@ class ModalConfig:
 
     Default constructor produces a config that uses MODAL_TOKEN_ID /
     MODAL_TOKEN_SECRET from the environment (or ~/.modal.toml).
+
+    ``image_python`` / ``image_node`` accept any tag that
+    ``modal.Image.from_registry`` can pull without credentials: Docker Hub
+    (``python:3.12-slim``), GHCR (``ghcr.io/org/engine:sha-abc123``), or a
+    public ECR repo. The tag is passed through verbatim and recorded in
+    ``evidence.image_tag``, so the signed attestation names the exact image
+    the workload ran in. Pin by digest or immutable tag for reproducible
+    trials; a moving tag like ``latest`` makes the attestation ambiguous.
+    Private registries are not wired in this version.
     """
 
     image_python: str = DEFAULT_PYTHON_IMAGE

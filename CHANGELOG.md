@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `docker-entrypoint.sh` materializes `DARWIN_CLASS_KEY_MODAL_V0` into
+  `/data/class-keys/modal-v0.pem`, closing the v3.1 known issue where `modal-v0`
+  was allowlisted but the hosted signer had no key for it. Receipts for Modal
+  workloads now anchor to the public keylist once the Fly ceremony runs
+  (`scripts/ceremony-modal-v0.sh`).
+- `infra/modal_smoketest.py` takes `--image`, `--timeout`, `--code`, `--memory`
+  so a custom registry tag can be confirmed against real Modal before a trial
+  runner depends on it.
+- Entrypoint tests: `modal-v0` materialization, and a sync check that every
+  `materialize_key` line names an allowlisted substrate with the conventional
+  env var (only `akash-v0` may lack a line).
+
+### Changed
+
+- Modal substrate `MAX_WALL_TIME_SEC` raised from 900 s to 3600 s. The 900 s
+  figure mirrored the AWS Lambda ceiling, which does not apply to Modal
+  sandboxes (24 h platform limit). Preflight upper bound at the ceiling is
+  about $0.47 wholesale at the default 0.125-core sandbox.
+- `ModalConfig` docstring states that `image_python` / `image_node` accept any
+  public registry tag and that the tag is recorded verbatim in
+  `evidence.image_tag`.
+
 ## [3.0.3] — 2026-05-28
 
 ### Added
