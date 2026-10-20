@@ -37,41 +37,36 @@ Increase AI adoption by increasing AI safety.
 ---
 ## How to Run
 
+**1. Install and start Docker.**
 
-**1. Install.**
+    pip install darwin-agentic-cloud
+    open -a Docker        # macOS. On Linux: sudo systemctl start docker
+    docker info           # should print server details, not an error
 
-`pip install darwin-agentic-cloud`
+Local runs need a running Docker daemon.
 
-Value: one free package gives you the CLI, the Python SDK and an MCP server. No account, no API key, no card.
+**2. Run something and save the receipt.**
 
-**2. See where you can run and what it costs.**
+    darwin run 'print("hello")' --cost-cap 0.10 --timeout 60 --save receipt.json
 
-`darwin list`
+The job runs sandboxed under a hard cost cap and timeout. You get the output plus a signed receipt binding the exact code, output, substrate and cost. To run a script, pass its path: `darwin run ./my_task.py ...`
 
-`darwin price my_task.py`
+**3. See who signed it.**
 
-Value: DAC finds every substrate you can use (local Docker, AWS Lambda, AWS Batch, Modal) and quotes each one before you spend anything.
+    darwin who receipt.json
 
-**3. Run your workload under hard limits.**
+Shows the substrate and operator keys behind the receipt. Keep receipts and you have an audit trail of every agent action.
 
-`darwin run my_task.py --cost-cap 0.10 --timeout 60 --save receipt.json`
+**4. Verify it.**
 
-In Python: `from darwin import run; att = run(code, cost_cap=0.10, timeout=60)`
+    darwin verify receipt.json
 
-Value: the job runs sandboxed on the cheapest substrate. If the estimate exceeds your cap, it never launches. You get back the output plus a signed receipt binding the exact code, the exact output, where it ran and what it cost. Use `darwin try` to force local-only execution while testing.
+Anyone can check the signature offline against the public keylist. Change one byte and it fails.
 
-**4. Keep the receipt as your audit log.**
+**No Docker? Verify a hosted receipt instead.**
 
-`darwin who receipt.json`
+    curl -s https://darwin-agentic-cloud.fly.dev/demo/attestation.json -o att.json
+    darwin who att.json
+    darwin verify att.json
 
-Value: every agent action leaves a record of who signed it and on what substrate. Save the receipts and you have an append-only trail of what your agent did, in what order, at what cost.
-
-**5. Let anyone verify it.**
-
-`darwin verify receipt.json`
-
-Value: anyone can check the signature offline against the public keylist. They don't have to trust you or Darwin. Change one byte of code or output and verification fails.
-
-***Bonus for agent builders:*** 
-
-`darwin mcp install` exposes all of this as tools in Claude Desktop, Cursor or any MCP client, so the agent itself runs through DAC and returns a receipt for every step.
+**For agent builders:** `darwin mcp install` adds DAC as tools in Claude Desktop, Cursor or any MCP client, so your agent gets a receipt for every step.
