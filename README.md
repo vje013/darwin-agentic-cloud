@@ -39,26 +39,39 @@ Increase AI adoption by increasing AI safety.
 
 
 **1. Install.**
+
 `pip install darwin-agentic-cloud`
+
 Value: one free package gives you the CLI, the Python SDK and an MCP server. No account, no API key, no card.
 
 **2. See where you can run and what it costs.**
+
 `darwin list`
+
 `darwin price my_task.py`
+
 Value: DAC finds every substrate you can use (local Docker, AWS Lambda, AWS Batch, Modal) and quotes each one before you spend anything.
 
 **3. Run your workload under hard limits.**
+
 `darwin run my_task.py --cost-cap 0.10 --timeout 60 --save receipt.json`
+
 In Python: `from darwin import run; att = run(code, cost_cap=0.10, timeout=60)`
+
 Value: the job runs sandboxed on the cheapest substrate. If the estimate exceeds your cap, it never launches. You get back the output plus a signed receipt binding the exact code, the exact output, where it ran and what it cost. Use `darwin try` to force local-only execution while testing.
 
 **4. Keep the receipt as your audit log.**
+
 `darwin who receipt.json`
+
 Value: every agent action leaves a record of who signed it and on what substrate. Save the receipts and you have an append-only trail of what your agent did, in what order, at what cost.
 
 **5. Let anyone verify it.**
+
 `darwin verify receipt.json`
+
 Value: anyone can check the signature offline against the public keylist. They don't have to trust you or Darwin. Change one byte of code or output and verification fails.
 
 ***Bonus for agent builders:*** 
+
 `darwin mcp install` exposes all of this as tools in Claude Desktop, Cursor or any MCP client, so the agent itself runs through DAC and returns a receipt for every step.
