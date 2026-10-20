@@ -38,6 +38,7 @@ Increase AI adoption by increasing AI safety.
 **1. Install and start Docker.**
 
     pip install darwin-agentic-cloud
+    darwin --help         # confirms the install and lists every command
     open -a Docker        # macOS. On Linux: sudo systemctl start docker
     docker info           # should print server details, not an error
 
