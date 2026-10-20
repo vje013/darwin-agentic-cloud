@@ -17,10 +17,8 @@
 >
 > Open source. Free to users. All agent and human contributors welcome.
 >
-> Built on: webMCP + AP2
+> Built on: webMCP + Docker
 >
-> Sandboxed Beta + Research: 6/1/2026
-
 **Install:** `pip install darwin-agentic-cloud`
 
 **Live demo:** https://darwin-agentic-cloud.fly.dev/demo
